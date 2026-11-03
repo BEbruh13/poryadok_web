@@ -307,6 +307,33 @@ svg.i{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-widt
 .toast.on{opacity:1;transform:translate(-50%,0);pointer-events:auto}
 .toast button{color:var(--bg);font-weight:600;text-decoration:underline;text-underline-offset:3px}
 
+/* schedule */
+.ic-sched{color:var(--c3)}
+.sched{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;align-items:start}
+.sched-day{display:flex;flex-direction:column;gap:6px;min-width:0}
+.sched-h{display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:0 2px 6px 4px;border-bottom:1px solid var(--line)}
+.sched-day.today .sched-h{color:var(--accent);border-bottom-color:var(--accent)}
+.sched-h button{width:24px;height:24px;border-radius:6px;display:grid;place-items:center;color:var(--faint)}
+.sched-h button:hover{background:var(--hover);color:var(--fg)}
+.sched-h svg.i{width:15px;height:15px}
+.sched-item{background:var(--accent-soft);border-left:3px solid var(--accent);border-radius:7px;padding:7px 8px;cursor:pointer;font-size:13px;line-height:1.3;overflow-wrap:anywhere}
+.sched-item .st{display:block;font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:2px}
+.sched-item .sn{display:block;font-size:11.5px;color:var(--muted);margin-top:3px}
+.sched-item .sn.hot{color:var(--deadline)}
+.sched-empty{height:30px}
+.event .ev-title{flex:1;min-width:0}
+.event .ev-more{font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:4px;margin-left:8px;white-space:nowrap}
+.event svg.i{width:13px;height:13px}
+.days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;margin-top:2px}
+.days button{height:32px;border-radius:7px;border:1px solid var(--line);font-size:12.5px;color:var(--muted)}
+.days button.on{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
+.rep-hint{font-size:12.5px;color:var(--muted)}
+.occ{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:var(--hover);border-radius:9px;padding:8px 10px;font-size:13.5px}
+.occ-actions{display:flex;gap:6px;flex-wrap:wrap}
+.skip-row{display:flex;flex-wrap:wrap;gap:6px;font-size:12.5px;color:var(--muted);align-items:center}
+.skip-row button{color:var(--accent);font-size:12.5px;text-decoration:underline;text-underline-offset:2px}
+@media (max-width:860px){.sched{grid-template-columns:minmax(0,1fr);gap:16px}.sched-empty{display:none}}
+
 .tabbar,.fab,.menu-btn{display:none}
 
 /* phone */
@@ -398,6 +425,8 @@ const P = {
   folder:'<path d="M3.5 7a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>',
   more:'<circle cx="5.5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="18.5" cy="12" r="1.3"/>',
   ev:'<rect x="4" y="4.5" width="16" height="16" rx="3"/><path d="M8 10.5h8M8 14.5h5"/>',
+  rep:'<path d="M4 11a8 8 0 0 1 14-4.5L20 9M20 4v5h-5M20 13a8 8 0 0 1-14 4.5L4 15M4 20v-5h5"/>',
+  sched:'<rect x="3.5" y="4.5" width="17" height="16" rx="2.5"/><path d="M3.5 9.5h17M9 9.5v11M15 9.5v11"/>',
 };
 const ic = (n, cls='') => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${P[n]}</svg>`;
 const CHECK_SVG = `<svg viewBox="0 0 24 24"><path d="M5 12.5l4.2 4.2L19 7"/></svg>`;
@@ -459,7 +488,41 @@ const projects = () => Object.values(data.projects).sort((a, b) => (a.order ?? 0
 const proj = id => id ? data.projects[id] : null;
 const byTask = (a, b) => (a.done - b.done) || (a.priority - b.priority) || cmpNullLast(a.time, b.time) || cmpNullLast(a.deadline, b.deadline) || (a.createdAt - b.createdAt);
 const byEvent = (a, b) => cmpNullLast(a.start, b.start) || a.createdAt - b.createdAt;
-const eventsOn = d => events().filter(e => e.date === d).sort(byEvent);
+const eventsOn = d => events().filter(e => occursOn(e, d)).sort(byEvent);
+
+/* repeat rules: item.repeat = {freq, days:[0-6], until, skip:[dates]}, item.date is the start */
+const REPEATS = {none: 'Не повторять', daily: 'Каждый день', weekdays: 'По будням', weekly: 'Каждую неделю', biweekly: 'Раз в 2 недели', monthly: 'Каждый месяц'};
+const WEEK = [1, 2, 3, 4, 5, 6, 0];
+function occursOn(it, d) {
+  const r = it.repeat;
+  if (!r) return it.date === d;
+  if (!it.date || d < it.date || (r.until && d > r.until) || (r.skip || []).includes(d)) return false;
+  const dd = parse(d), wd = dd.getDay();
+  switch (r.freq) {
+    case 'daily': return true;
+    case 'weekdays': return wd >= 1 && wd <= 5;
+    case 'weekly': return (r.days || []).includes(wd);
+    case 'biweekly': return (r.days || []).includes(wd) && diffDays(mondayOf(it.date), mondayOf(d)) % 14 === 0;
+    case 'monthly': { const last = new Date(dd.getFullYear(), dd.getMonth() + 1, 0).getDate(); return dd.getDate() === Math.min(parse(it.date).getDate(), last); }
+  }
+  return false;
+}
+function nextOccurrence(it, after) {
+  for (let i = 1; i <= 800; i++) { const d = addDays(after, i); if (occursOn(it, d)) return d; }
+  return null;
+}
+function repeatLabel(it) {
+  const r = it.repeat; if (!r) return '';
+  const days = WEEK.filter(w => (r.days || []).includes(w)).map(w => WD[w]).join(', ');
+  if (r.freq === 'daily') return 'каждый день';
+  if (r.freq === 'weekdays') return 'по будням';
+  if (r.freq === 'weekly') return days;
+  if (r.freq === 'biweekly') return days + ', через неделю';
+  if (r.freq === 'monthly') return `каждый месяц, ${parse(it.date).getDate()}-го`;
+  return '';
+}
+const eventWhen = e => e.repeat ? repeatLabel(e) : shortDate(e.date);
+const openLinked = id => tasks().filter(t => t.eventId === id && !t.done);
 const hasAnyData = () => KINDS.some(k => Object.keys(data[k]).length);
 
 function newTask(p = {}) {
@@ -737,6 +800,9 @@ function taskRow(t, ctx = {}) {
     const dl = n < 0 ? 'просрочено, ' + shortDate(t.deadline) : n === 0 ? 'дедлайн сегодня' : n === 1 ? 'дедлайн завтра' : 'до ' + shortDate(t.deadline);
     m.push(`<span class="flag ${n > 2 || t.done ? 'far' : ''}">${ic('flag')}${esc(dl)}</span>`);
   }
+  if (t.repeat) m.push(`<span title="Повторяется">${ic('rep')}${esc(repeatLabel(t))}</span>`);
+  const ev = t.eventId && data.events[t.eventId];
+  if (ev && ctx.hideEvent !== ev.id) m.push(`<span>${ic('sched')}${esc(ev.title || 'Событие')}</span>`);
   if (t.subtasks?.length) m.push(`<span>${ic('subs')}${t.subtasks.filter(s => s.done).length}/${t.subtasks.length}</span>`);
   const linked = notes().some(n => n.taskId === t.id);
   if (t.notes?.trim() || linked) m.push(`<span title="Есть описание или заметки">${ic('note')}</span>`);
@@ -749,8 +815,9 @@ function taskRow(t, ctx = {}) {
     <div class="t-main"><div class="t-title ${t.title ? '' : 'empty'}">${esc(t.title || 'Без названия')}</div>${m.length ? `<div class="meta">${m.join('')}</div>` : ''}</div>
   </div>`;
 }
-function eventRow(e) {
-  return `<div class="event" data-open="events:${e.id}"><span class="ev-time">${e.start ? esc(e.start) + (e.end ? '–' + esc(e.end) : '') : 'весь день'}</span><span>${esc(e.title || 'Событие')}</span></div>`;
+function eventRow(e, d) {
+  const n = openLinked(e.id).length;
+  return `<div class="event" data-open="events:${e.id}:${d}"><span class="ev-time">${e.start ? esc(e.start) + (e.end ? '–' + esc(e.end) : '') : 'весь день'}</span><span class="ev-title">${esc(e.title || 'Событие')}${e.repeat ? `<span class="ev-more" title="Повторяется">${ic('rep')}</span>` : ''}${n ? `<span class="ev-more">${ic('subs')}${n}</span>` : ''}</span></div>`;
 }
 function quickAdd(key, ctx = {}) {
   return `<form class="quick" data-date="${ctx.date || ''}" data-project="${ctx.projectId || ''}">
@@ -770,6 +837,7 @@ const VIEWS = {
   today: {title: 'Сегодня', icon: 'star', cls: 'ic-today'},
   upcoming: {title: 'Предстоящие', icon: 'up', cls: 'ic-up'},
   calendar: {title: 'Календарь', icon: 'cal', cls: 'ic-cal'},
+  schedule: {title: 'Расписание', icon: 'sched', cls: 'ic-sched'},
   inbox: {title: 'Входящие', icon: 'inbox', cls: 'ic-in'},
   all: {title: 'Все задачи', icon: 'list', cls: 'ic-all'},
   notes: {title: 'Заметки', icon: 'note', cls: 'ic-notes'},
@@ -791,7 +859,7 @@ function viewToday() {
   let h = header('Сегодня', cap(longDay(td)), 'today', `<button class="btn" data-action="new-event" data-date="${td}">${ic('ev')}Событие</button>`);
   h += quickAdd('today', {date: td}) + HINT;
   const lb = loadingBlock(); if (lb) return h + lb;
-  if (evs.length) h += `<div class="agenda">${evs.map(eventRow).join('')}</div>`;
+  if (evs.length) h += `<div class="agenda">${evs.map(e => eventRow(e, td)).join('')}</div>`;
   if (overdue.length) h += `<div class="section"><div class="sec-h red">Просрочено<span class="sub">${overdue.length}</span><span class="act"><button data-action="move-overdue">Перенести на сегодня</button></span></div><div class="list">${overdue.map(t => taskRow(t)).join('')}</div></div>`;
   if (todays.length) h += `<div class="section">${overdue.length ? `<div class="sec-h">На сегодня<span class="sub">${todays.length}</span></div>` : ''}<div class="list">${todays.map(t => taskRow(t, {hideDate: td})).join('')}</div></div>`;
   if (!overdue.length && !todays.length) {
@@ -820,7 +888,7 @@ function viewUpcoming() {
     if (i > 7 && !ts.length && !evs.length) continue;
     h += `<div class="day-h"><span class="n">${dd.getDate()}</span><span class="w">${i === 1 ? 'Завтра' : cap(WDF[dd.getDay()])}</span><span class="m">${MGEN[dd.getMonth()]}</span>
       <button data-action="add-menu" data-date="${d}" aria-label="Добавить на ${esc(longDay(d))}">${ic('plus')}</button></div>`;
-    h += evs.map(eventRow).join('') + `<div class="list">${ts.map(t => taskRow(t, {hideDate: d})).join('')}</div>`;
+    h += evs.map(e => eventRow(e, d)).join('') + `<div class="list">${ts.map(t => taskRow(t, {hideDate: d})).join('')}</div>`;
     if (!ts.length && !evs.length) h += `<div class="day-empty"></div>`;
   }
   const end = addDays(td, 14);
@@ -879,8 +947,8 @@ function viewProject() {
   const ns = notes().filter(n => n.projectId === p.id).sort((a, b) => b.updatedAt - a.updatedAt);
   h += `<div class="section" style="margin-top:30px"><div class="sec-h">Заметки<span class="sub">${ns.length || ''}</span><span class="act"><button data-action="new-note" data-project="${p.id}">+ Заметка</button></span></div>
     ${ns.map(n => `<button class="note-item" data-action="open-note" data-id="${n.id}"><div class="nt"><span>${esc(n.title || 'Без названия')}</span></div><div class="np">${esc(n.body.slice(0, 200))}</div></button>`).join('') || '<div class="quiet">Нет заметок.</div>'}</div>`;
-  const evs = events().filter(e => e.projectId === p.id && e.date >= today()).sort((a, b) => cmpNullLast(a.date, b.date) || byEvent(a, b));
-  if (evs.length) h += `<div class="section" style="margin-top:30px"><div class="sec-h">События</div>${evs.map(e => `<div class="event" data-open="events:${e.id}"><span class="ev-time">${esc(shortDate(e.date))} ${esc(e.start || '')}</span><span>${esc(e.title || 'Событие')}</span></div>`).join('')}</div>`;
+  const evs = events().filter(e => e.projectId === p.id && (e.repeat || e.date >= today())).sort((a, b) => cmpNullLast(a.date, b.date) || byEvent(a, b));
+  if (evs.length) h += `<div class="section" style="margin-top:30px"><div class="sec-h">События</div>${evs.map(e => `<div class="event" data-open="events:${e.id}"><span class="ev-time">${esc(eventWhen(e))} ${esc(e.start || '')}</span><span>${esc(e.title || 'Событие')}</span></div>`).join('')}</div>`;
   if (done.length) h += `<div class="section" style="margin-top:30px"><div class="sec-h">Выполнено<span class="sub">${done.length}</span></div><div class="list">${done.sort((a, b) => b.doneAt - a.doneAt).map(t => taskRow(t, {hideProject: p.id})).join('')}</div></div>`;
   return h;
 }
@@ -894,7 +962,36 @@ function viewSearch() {
   if (!ts.length && !ns.length && !evs.length) return h + `<div class="quiet">Ничего не найдено.</div>`;
   if (ts.length) h += `<div class="section"><div class="sec-h">Задачи<span class="sub">${ts.length}</span></div><div class="list">${ts.map(t => taskRow(t)).join('')}</div></div>`;
   if (ns.length) h += `<div class="section" style="margin-top:24px"><div class="sec-h">Заметки<span class="sub">${ns.length}</span></div>${ns.map(n => `<button class="note-item" data-action="open-note" data-id="${n.id}"><div class="nt"><span>${esc(n.title || 'Без названия')}</span></div><div class="np">${esc(n.body.slice(0, 200))}</div></button>`).join('')}</div>`;
-  if (evs.length) h += `<div class="section" style="margin-top:24px"><div class="sec-h">События<span class="sub">${evs.length}</span></div>${evs.map(e => `<div class="event" data-open="events:${e.id}"><span class="ev-time">${esc(shortDate(e.date))} ${esc(e.start || '')}</span><span>${esc(e.title)}</span></div>`).join('')}</div>`;
+  if (evs.length) h += `<div class="section" style="margin-top:24px"><div class="sec-h">События<span class="sub">${evs.length}</span></div>${evs.map(e => `<div class="event" data-open="events:${e.id}"><span class="ev-time">${esc(eventWhen(e))} ${esc(e.start || '')}</span><span>${esc(e.title)}</span></div>`).join('')}</div>`;
+  return h;
+}
+
+function schedItem(e) {
+  const linked = openLinked(e.id);
+  const dls = linked.map(t => t.deadline).filter(Boolean).sort();
+  const hot = dls[0] && diffDays(today(), dls[0]) <= 2;
+  return `<div class="sched-item" data-open="events:${e.id}"><span class="st">${e.start ? esc(e.start) + (e.end ? '–' + esc(e.end) : '') : 'весь день'}</span>${esc(e.title || 'Без названия')}
+    ${e.repeat.freq === 'biweekly' ? '<span class="sn">через неделю</span>' : ''}
+    ${linked.length ? `<span class="sn ${hot ? 'hot' : ''}">задач: ${linked.length}${dls[0] ? ', до ' + esc(shortDate(dls[0])) : ''}</span>` : ''}</div>`;
+}
+function viewSchedule() {
+  const td = today(), wdNow = parse(td).getDay();
+  let h = header('Расписание', 'Всё, что повторяется', 'schedule', `<button class="btn primary" data-action="new-sched">${ic('plus')}Добавить</button>`);
+  const lb = loadingBlock(); if (lb) return h + lb;
+  const all = events().filter(e => e.repeat);
+  const active = all.filter(e => !e.repeat.until || e.repeat.until >= td).sort(byEvent);
+  const ended = all.filter(e => e.repeat.until && e.repeat.until < td);
+  const onDay = (e, w) => e.repeat.freq === 'daily' || (e.repeat.freq === 'weekdays' && w >= 1 && w <= 5) || ((e.repeat.freq === 'weekly' || e.repeat.freq === 'biweekly') && (e.repeat.days || []).includes(w));
+  h += `<div class="sched">${WEEK.map(w => {
+    const items = active.filter(e => onDay(e, w));
+    return `<div class="sched-day ${w === wdNow ? 'today' : ''}"><div class="sched-h">${WD[w]}<button data-action="new-sched" data-wd="${w}" aria-label="Добавить в ${WDF[w]}">${ic('plus')}</button></div>${items.map(schedItem).join('') || '<div class="sched-empty"></div>'}</div>`;
+  }).join('')}</div>`;
+  if (!active.length) h += `<div class="empty" style="margin-top:20px"><h3>Здесь будет ваше расписание</h3><p>Добавьте занятие или другое постоянное дело: оно появится в календаре на все нужные дни. К нему можно прикреплять задачи с дедлайнами.</p></div>`;
+  const monthly = active.filter(e => e.repeat.freq === 'monthly');
+  if (monthly.length) h += `<div class="section" style="margin-top:28px"><div class="sec-h">Раз в месяц</div>${monthly.map(e => `<div class="event" data-open="events:${e.id}"><span class="ev-time">${esc(repeatLabel(e))}</span><span>${esc(e.title || 'Без названия')}</span></div>`).join('')}</div>`;
+  const rec = tasks().filter(t => t.repeat && !t.done).sort(byTask);
+  if (rec.length) h += `<div class="section" style="margin-top:28px"><div class="sec-h">Повторяющиеся задачи<span class="sub">${rec.length}</span></div><div class="list">${rec.map(t => taskRow(t)).join('')}</div></div>`;
+  if (ended.length) h += `<div class="section" style="margin-top:28px"><div class="sec-h">Закончились<span class="sub">${ended.length}</span></div>${ended.map(e => `<div class="event" data-open="events:${e.id}"><span class="ev-time">до ${esc(shortDate(e.repeat.until))}</span><span>${esc(e.title || 'Без названия')}</span></div>`).join('')}</div>`;
   return h;
 }
 
@@ -930,7 +1027,7 @@ function monthView() {
     const d = addDays(start, i), dd = parse(d);
     const {evs, ts, dls} = dayItems(d);
     const chips = [
-      ...evs.map(e => `<div class="chip ev" data-open="events:${e.id}" draggable="true" data-drag="events:${e.id}">${e.start ? `<span class="t">${e.start}</span>` : ''}${esc(e.title || 'Событие')}</div>`),
+      ...evs.map(e => `<div class="chip ev" data-open="events:${e.id}:${d}" ${e.repeat ? '' : `draggable="true" data-drag="events:${e.id}"`}>${e.start ? `<span class="t">${e.start}</span>` : ''}${esc(e.title || 'Событие')}</div>`),
       ...ts.map(t => `<div class="chip ${PRIO[t.priority]?.cls} ${t.done ? 'done' : ''}" data-open="tasks:${t.id}" draggable="true" data-drag="tasks:${t.id}">${t.time ? `<span class="t">${t.time}</span>` : ''}${esc(t.title || 'Без названия')}</div>`),
       ...dls.map(t => `<div class="chip dl" data-open="tasks:${t.id}">⚑ ${esc(t.title || 'Без названия')}</div>`),
     ];
@@ -944,7 +1041,7 @@ function dayPanel(d) {
   const {evs, ts, dls} = dayItems(d);
   let h = `<div class="daypanel"><div class="sec-h">${esc(cap(relDay(d)))}<span class="sub">${esc(longDay(d))}</span><span class="act"><button data-action="new-event" data-date="${d}">+ Событие</button></span></div>`;
   h += `<div style="margin-top:10px">${quickAdd('day', {date: d})}</div>`;
-  h += evs.map(eventRow).join('');
+  h += evs.map(e => eventRow(e, d)).join('');
   h += `<div class="list">${[...ts, ...dls].map(t => taskRow(t, {hideDate: d})).join('')}</div>`;
   if (!evs.length && !ts.length && !dls.length) h += `<div class="quiet">В этот день ничего не запланировано. Перетащите задачу на любой день в сетке, чтобы перенести её.</div>`;
   return h + '</div>';
@@ -968,7 +1065,7 @@ function weekView() {
   let h = `<div class="week" style="--n:${days.length}"><div class="wk-row">${'<div></div>'}${days.map(d => { const dd = parse(d); return `<div class="wk-dh ${d === td ? 'today' : ''}" data-action="wk-day" data-date="${d}"><div class="wd">${WD[dd.getDay()]}</div><div class="dn">${dd.getDate()}</div></div>`; }).join('')}</div>`;
   h += `<div class="wk-row wk-allday"><div>без времени</div>${days.map(d => {
     const {evs, ts, dls} = dayItems(d);
-    const untimed = [...evs.filter(e => !e.start).map(e => `<div class="chip ev" data-open="events:${e.id}">${esc(e.title)}</div>`),
+    const untimed = [...evs.filter(e => !e.start).map(e => `<div class="chip ev" data-open="events:${e.id}:${d}">${esc(e.title)}</div>`),
       ...ts.filter(t => !t.time).map(t => `<div class="chip ${PRIO[t.priority]?.cls} ${t.done ? 'done' : ''}" data-open="tasks:${t.id}" draggable="true" data-drag="tasks:${t.id}">${esc(t.title || 'Без названия')}</div>`),
       ...dls.map(t => `<div class="chip dl" data-open="tasks:${t.id}">⚑ ${esc(t.title)}</div>`)];
     return `<div data-drop-day="${d}">${untimed.join('')}</div>`;
@@ -986,7 +1083,7 @@ function weekView() {
     items.forEach(it => {
       const top = it.s / 60 * hh, ht = Math.max(20, (it.e - it.s) / 60 * hh - 2);
       const left = `calc(${it.lane / it.n * 100}% + 2px)`, width = `calc(${100 / it.n}% - 4px)`;
-      if (it.kind === 'events') col += `<div class="blk ev" style="top:${top}px;height:${ht}px;left:${left};width:${width}" data-open="events:${it.o.id}" draggable="true" data-drag="events:${it.o.id}"><span class="t">${esc(it.o.start)}${it.o.end ? '–' + esc(it.o.end) : ''}</span>${esc(it.o.title || 'Событие')}</div>`;
+      if (it.kind === 'events') col += `<div class="blk ev" style="top:${top}px;height:${ht}px;left:${left};width:${width}" data-open="events:${it.o.id}:${d}" ${it.o.repeat ? '' : `draggable="true" data-drag="events:${it.o.id}"`}><span class="t">${esc(it.o.start)}${it.o.end ? '–' + esc(it.o.end) : ''}</span>${esc(it.o.title || 'Событие')}</div>`;
       else col += `<div class="blk ${PRIO[it.o.priority]?.cls} ${it.o.done ? 'done' : ''}" style="top:${top}px;height:${ht}px;left:${left};width:${width}" data-open="tasks:${it.o.id}" draggable="true" data-drag="tasks:${it.o.id}"><span class="t">${esc(it.o.time)}</span>${esc(it.o.title || 'Без названия')}</div>`;
     });
     if (d === td) { const n = new Date(); col += `<div class="now-line" style="top:${(n.getHours() * 60 + n.getMinutes()) / 60 * hh}px"></div>`; }
@@ -1054,7 +1151,7 @@ function renderSidebar() {
     <div class="side-scroll">
       <nav class="nav">
         ${navBtn('today', c.today ? `<span class="count ${c.late ? 'hot' : ''}">${c.today}</span>` : '')}
-        ${navBtn('upcoming')}${navBtn('calendar')}
+        ${navBtn('upcoming')}${navBtn('calendar')}${navBtn('schedule')}
       </nav>
       <nav class="nav">
         ${navBtn('inbox', c.inbox ? `<span class="count">${c.inbox}</span>` : '')}
@@ -1096,8 +1193,8 @@ function renderView(full) {
     const ed = $('#note-editor');
     if (ed && ed.dataset.id === S.noteId && ed.contains(document.activeElement)) { viewNotes(true); return; }
   }
-  v.className = 'view' + (S.view === 'calendar' || S.view === 'notes' ? ' wide' : '');
-  const html = ({today: viewToday, upcoming: viewUpcoming, inbox: viewInbox, all: viewAll, logbook: viewLogbook, calendar: viewCalendar, notes: () => viewNotes(false), project: viewProject})[S.view]?.() ?? viewToday();
+  v.className = 'view' + (S.view === 'calendar' || S.view === 'notes' || S.view === 'schedule' ? ' wide' : '');
+  const html = ({today: viewToday, upcoming: viewUpcoming, schedule: viewSchedule, inbox: viewInbox, all: viewAll, logbook: viewLogbook, calendar: viewCalendar, notes: () => viewNotes(false), project: viewProject})[S.view]?.() ?? viewToday();
   preserveFocus(() => { v.innerHTML = html; });
   if (S.view === 'notes') autosize($('#ne-body'), true);
   if (S.view === 'calendar' && S.cal.mode === 'week' && S.scrollWeek) {
@@ -1120,8 +1217,8 @@ function go(view, opts = {}) {
 }
 
 /* ---------- sheet (task / event details) ---------- */
-function openSheet(kind, id, isNew = false) {
-  S.open = {kind, id, isNew};
+function openSheet(kind, id, isNew = false, occ = null) {
+  S.open = {kind, id, isNew, occ};
   renderSheet();
   $('#sheet').classList.add('on'); $('#sheet').setAttribute('aria-hidden', 'false');
   $('#scrim').classList.add('on');
@@ -1149,9 +1246,42 @@ function renderSheet() {
   const b = $('.sh-body', sh); if (b) b.scrollTop = scroll;
   autosize($('#f-title')); autosize($('#f-notes'));
 }
+function repeatFields(it, disabled) {
+  const r = it.repeat, f = r ? r.freq : 'none';
+  return `<div class="field"><span class="label">Повтор</span>
+    <select class="inp" id="f-repeat" data-rep="freq" aria-label="Повтор" ${disabled ? 'disabled' : ''}>${Object.entries(REPEATS).map(([k, l]) => `<option value="${k}" ${k === f ? 'selected' : ''}>${l}</option>`).join('')}</select>
+    ${r && (f === 'weekly' || f === 'biweekly') ? `<div class="days" role="group" aria-label="Дни недели">${WEEK.map(w => `<button class="${(r.days || []).includes(w) ? 'on' : ''}" data-action="rep-day" data-w="${w}" aria-pressed="${(r.days || []).includes(w)}">${WD[w]}</button>`).join('')}</div>` : ''}
+    ${f === 'biweekly' ? `<div class="rep-hint">Недели считаются от даты начала. Для пар по числителю и знаменателю создайте две записи с началом на соседних неделях.</div>` : ''}
+    ${r ? `<label class="field" style="margin-top:6px"><span class="label">Повторять до</span><input class="inp" type="date" id="f-until" data-rep="until" value="${r.until || ''}"></label>` : ''}</div>`;
+}
+function eventTasksBlock(e) {
+  const td = today(), occ = S.open && S.open.occ;
+  const next = nextOccurrence(e, td);
+  const def = occ && occ > td ? occ : next;
+  const linked = tasks().filter(t => t.eventId === e.id);
+  const open = linked.filter(t => !t.done).sort(byTask), doneN = linked.length - open.length;
+  const opts = [...new Set([occ && occ > td ? occ : null, next].filter(Boolean))];
+  return `<div class="field"><span class="label">Задачи и дедлайны${open.length ? ` · ${open.length}` : ''}</span>
+    ${open.length ? `<div class="list">${open.map(t => taskRow(t, {hideEvent: e.id, hideProject: e.projectId})).join('')}</div>` : ''}
+    ${doneN ? `<div class="rep-hint">Выполнено: ${doneN}</div>` : ''}
+    <input class="inp" id="f-ev-task" placeholder="Новая задача, например: реферат !1" autocomplete="off" enterkeyhint="done" aria-label="Новая задача к этому">
+    <label class="field"><span class="label">Дедлайн</span><input class="inp" type="date" id="f-ev-dl" value="${def || ''}"></label>
+    <div class="qd">${opts.map(d => `<button data-action="ev-dl" data-v="${d}">${d === next ? 'К следующему' : 'К этому'}: ${esc(shortDate(d))}</button>`).join('')}<button data-action="ev-dl" data-v="">Без дедлайна</button></div>
+    <button class="btn" style="align-self:flex-start" data-action="ev-add-task">${ic('plus')}Добавить задачу</button></div>`;
+}
+function occBlock(e) {
+  const occ = S.open && S.open.occ, r = e.repeat;
+  if (!r) return '';
+  const skips = (r.skip || []).slice().sort();
+  return `${occ ? `<div class="occ"><span>${esc(cap(longDay(occ)))}</span><button class="btn" data-action="skip-occ" data-d="${occ}">Отменить только этот день</button></div>` : ''}
+    ${skips.length ? `<div class="skip-row">Отменено: ${skips.map(d => `${esc(shortDate(d))} <button data-action="unskip" data-d="${d}">вернуть</button>`).join(' ')}</div>` : ''}`;
+}
 function taskSheet(t) {
   const td = today();
   const linked = notes().filter(n => n.taskId === t.id);
+  const linkable = events().filter(e => e.repeat || e.id === t.eventId).sort((a, b) => (a.title || '').localeCompare(b.title || '', 'ru'));
+  const bound = t.eventId && data.events[t.eventId];
+  const nextEv = bound && nextOccurrence(bound, td);
   return `<div class="sh-head">
     <button class="check ${PRIO[t.priority]?.cls} ${t.done ? 'on' : ''}" data-action="toggle" data-id="${t.id}" aria-label="${t.done ? 'Вернуть в работу' : 'Отметить выполненной'}">${CHECK_SVG}</button>
     <textarea id="f-title" class="f-title" rows="1" data-field="title" placeholder="Что нужно сделать?" aria-label="Название">${esc(t.title)}</textarea>
@@ -1162,9 +1292,12 @@ function taskSheet(t) {
     <div class="field"><span class="label">Когда делать</span>
       <div class="grid2"><input class="inp" type="date" id="f-date" data-field="date" value="${t.date || ''}" aria-label="Дата"><input class="inp" type="time" id="f-time" data-field="time" value="${t.time || ''}" aria-label="Время" ${t.date ? '' : 'disabled'}></div>
       <div class="qd"><button data-action="qdate" data-v="${td}">Сегодня</button><button data-action="qdate" data-v="${addDays(td, 1)}">Завтра</button><button data-action="qdate" data-v="${addDays(mondayOf(td), 7)}">След. неделя</button><button data-action="qdate" data-v="">Без даты</button></div></div>
+    ${repeatFields(t, !t.date)}
     <div class="grid2">
       <label class="field"><span class="label">Длительность</span><select class="inp" id="f-dur" data-field="duration" ${t.time ? '' : 'disabled'}>${[15, 30, 45, 60, 90, 120, 180, 240].map(m => `<option value="${m}" ${t.duration === m ? 'selected' : ''}>${m < 60 ? m + ' мин' : (m / 60) + ' ч'}</option>`).join('')}</select></label>
       <label class="field"><span class="label" style="color:var(--deadline)">Дедлайн</span><input class="inp" type="date" id="f-deadline" data-field="deadline" value="${t.deadline || ''}"></label></div>
+    ${linkable.length ? `<label class="field"><span class="label">Из расписания</span><select class="inp" id="f-event" data-field="eventId"><option value="">Не привязана</option>${linkable.map(e => `<option value="${e.id}" ${e.id === t.eventId ? 'selected' : ''}>${esc(e.title || 'Без названия')}${e.repeat ? ' (' + esc(repeatLabel(e)) + ')' : ''}</option>`).join('')}</select></label>` : ''}
+    ${nextEv ? `<div class="qd" style="margin-top:-8px"><button data-action="task-dl" data-v="${nextEv}">Дедлайн к следующему занятию: ${esc(shortDate(nextEv))}</button></div>` : ''}
     <div class="field"><span class="label">Подзадачи${t.subtasks.length ? ` · ${t.subtasks.filter(s => s.done).length}/${t.subtasks.length}` : ''}</span>
       <div>${t.subtasks.map(s => `<div class="sub ${s.done ? 'done' : ''}"><button class="check ${s.done ? 'on' : ''}" data-action="sub-toggle" data-sid="${s.id}" aria-label="Отметить пункт">${CHECK_SVG}</button><input id="sub-${s.id}" value="${esc(s.text)}" data-sub="${s.id}" aria-label="Пункт"><button class="del" data-action="sub-del" data-sid="${s.id}" aria-label="Удалить пункт">${ic('x')}</button></div>`).join('')}
       <input class="sub-new" id="f-sub-new" placeholder="+ Добавить пункт" enterkeyhint="enter" aria-label="Новый пункт"></div></div>
@@ -1183,13 +1316,16 @@ function eventSheet(e) {
     <textarea id="f-title" class="f-title" rows="1" data-field="title" placeholder="Название события" aria-label="Название">${esc(e.title)}</textarea>
     <button class="x-btn" data-action="close-sheet" aria-label="Закрыть">${ic('x')}</button></div>
   <div class="sh-body">
-    <label class="field"><span class="label">Дата</span><input class="inp" type="date" id="f-date" data-field="date" value="${e.date || ''}"></label>
+    ${occBlock(e)}
+    <label class="field"><span class="label">${e.repeat ? 'Начало повтора' : 'Дата'}</span><input class="inp" type="date" id="f-date" data-field="date" value="${e.date || ''}"></label>
     <div class="grid2"><label class="field"><span class="label">Начало</span><input class="inp" type="time" id="f-start" data-field="start" value="${e.start || ''}"></label>
       <label class="field"><span class="label">Конец</span><input class="inp" type="time" id="f-end" data-field="end" value="${e.end || ''}"></label></div>
     <div class="qd"><button data-action="ev-allday">Весь день</button></div>
+    ${repeatFields(e, false)}
+    ${eventTasksBlock(e)}
     <label class="field"><span class="label">Проект</span><select class="inp" id="f-project" data-field="projectId">${projectOptions(e.projectId)}</select></label>
     <label class="field"><span class="label">Описание</span><textarea id="f-notes" class="inp" style="height:auto;min-height:90px;padding:8px 10px;resize:vertical" data-field="notes" placeholder="Место, ссылка, детали">${esc(e.notes)}</textarea></label>
-    <div class="sh-foot"><span></span><button class="btn danger" data-action="delete" data-kind="events" data-id="${e.id}">Удалить</button></div>
+    <div class="sh-foot"><span></span><button class="btn danger" data-action="delete" data-kind="events" data-id="${e.id}">${e.repeat ? 'Удалить весь повтор' : 'Удалить'}</button></div>
   </div>`;
 }
 
@@ -1197,11 +1333,29 @@ function eventSheet(e) {
 function toggleTask(id) {
   const t = data.tasks[id]; if (!t) return;
   t.done = !t.done; t.doneAt = t.done ? Date.now() : null;
+  // a repeating task hands its rule over to a fresh copy on the next date
+  const rep = t.repeat; let spawned = null;
+  if (t.done && rep && t.date) {
+    const yest = addDays(today(), -1);
+    const next = nextOccurrence(t, t.date > yest ? t.date : yest);
+    if (next) {
+      const now = Date.now();
+      spawned = {...JSON.parse(JSON.stringify(t)), id: uid(), date: next, deadline: t.deadline ? addDays(t.deadline, diffDays(t.date, next)) : null,
+        done: false, doneAt: null, createdAt: now, subtasks: (t.subtasks || []).map(s => ({...s, id: uid(), done: false}))};
+      store.put('tasks', spawned, 0);
+    }
+    t.repeat = null;
+  }
   store.put('tasks', t, 0);
   const rows = document.querySelectorAll(`[data-open="tasks:${id}"]`);
   rows.forEach(r => { r.classList.toggle('completing', t.done); const c = r.querySelector('.check'); c && c.classList.toggle('on', t.done); });
   const sc = $(`#sheet .check[data-id="${id}"]`); if (sc) sc.classList.toggle('on', t.done);
-  if (t.done) toast('Задача выполнена', () => { t.done = false; t.doneAt = null; store.put('tasks', t, 0); scheduleRender(); renderSheet(); });
+  if (t.done) toast(spawned ? `Выполнено. Следующая: ${relDay(spawned.date).toLowerCase()}` : 'Задача выполнена', () => {
+    t.done = false; t.doneAt = null; t.repeat = rep;
+    if (spawned) store.del('tasks', spawned.id);
+    store.put('tasks', t, 0); scheduleRender(); renderSheet();
+  });
+  if (spawned && S.open && S.open.id === id) renderSheet();
   setTimeout(scheduleRender, t.done ? 550 : 0);
 }
 function addQuick(form) {
@@ -1226,6 +1380,24 @@ function contextDefaults() {
 }
 function createTask(p) { const t = newTask(p); store.put('tasks', t, 0); openSheet('tasks', t.id, true); }
 function createEvent(p) { const e = newEvent(p); store.put('events', e, 0); openSheet('events', e.id, true); }
+function createSeries(wd) {
+  const td = today(), w = wd == null ? parse(td).getDay() : wd;
+  const date = addDays(td, (w - parse(td).getDay() + 7) % 7);
+  createEvent({date, repeat: {freq: 'weekly', days: [w], until: null, skip: []}});
+}
+function addEventTask() {
+  const e = S.open && data.events[S.open.id]; const inp = $('#f-ev-task');
+  if (!e || !inp) return;
+  const text = inp.value.trim(); if (!text) { inp.focus(); return; }
+  const r = parseQuick(text);
+  if (!r.title) { toast('Добавьте название задачи'); return; }
+  const deadline = r.deadline || $('#f-ev-dl').value || null;
+  const t = newTask({title: r.title, priority: r.priority || 2, tags: r.tags, date: r.date || (r.time ? deadline || today() : null), time: r.time || null, deadline, eventId: e.id, projectId: e.projectId || null});
+  store.put('tasks', t, 0);
+  renderSheet(); scheduleRender();
+  $('#f-ev-task')?.focus();
+  toast(deadline ? `Задача добавлена, дедлайн ${shortDate(deadline)}` : 'Задача добавлена');
+}
 function createNote(p) {
   const n = newNote(p); store.put('notes', n, 0);
   S.noteId = n.id; S.view = 'notes'; S.search = ''; saveUi();
@@ -1330,7 +1502,7 @@ document.addEventListener('click', e => {
   const a = t.closest('[data-action]');
   if (a) { handleAction(a, e); return; }
   const op = t.closest('[data-open]');
-  if (op) { const [kind, id] = op.dataset.open.split(':'); if (data[kind][id]) openSheet(kind, id); return; }
+  if (op) { const [kind, id, occ] = op.dataset.open.split(':'); if (data[kind][id]) openSheet(kind, id, false, occ || null); return; }
   const cell = t.closest('[data-day]');
   if (cell) {
     const d = cell.dataset.day;
@@ -1362,7 +1534,29 @@ function handleAction(a, e) {
     case 'toggle': toggleTask(id); break;
     case 'close-sheet': closeSheet(); break;
     case 'set-prio': if (cur) { cur.priority = +a.dataset.p; store.put('tasks', cur, 0); renderSheet(); scheduleRender(); } break;
-    case 'qdate': if (cur) { cur.date = a.dataset.v || null; if (!cur.date) cur.time = null; store.put('tasks', cur, 0); renderSheet(); scheduleRender(); } break;
+    case 'qdate': if (cur) { cur.date = a.dataset.v || null; if (!cur.date) { cur.time = null; cur.repeat = null; } store.put('tasks', cur, 0); renderSheet(); scheduleRender(); } break;
+    case 'task-dl': if (cur) { cur.deadline = a.dataset.v; store.put('tasks', cur, 0); renderSheet(); scheduleRender(); } break;
+    case 'ev-dl': { const dl = $('#f-ev-dl'); if (dl) dl.value = a.dataset.v; $('#f-ev-task')?.focus(); break; }
+    case 'ev-add-task': addEventTask(); break;
+    case 'new-sched': createSeries(a.dataset.wd == null ? null : +a.dataset.wd); break;
+    case 'rep-day': if (cur && cur.repeat) {
+      const w = +a.dataset.w, days = cur.repeat.days || [];
+      if (days.includes(w) && days.length === 1) { toast('Оставьте хотя бы один день'); break; }
+      cur.repeat.days = days.includes(w) ? days.filter(x => x !== w) : [...days, w];
+      // a weekly series that has not started yet begins on its earliest chosen day
+      if (S.open.kind === 'events' && cur.repeat.freq === 'weekly' && cur.date > today()) {
+        const td = today(), wd = parse(td).getDay();
+        cur.date = addDays(td, Math.min(...cur.repeat.days.map(x => (x - wd + 7) % 7)));
+      }
+      store.put(S.open.kind, cur, 0); renderSheet(); scheduleRender();
+    } break;
+    case 'skip-occ': if (cur && cur.repeat) {
+      const d = a.dataset.d, ev = cur;
+      ev.repeat.skip = [...(ev.repeat.skip || []), d];
+      store.put('events', ev, 0); closeSheet();
+      toast(`Отменено на ${shortDate(d)}`, () => { ev.repeat.skip = ev.repeat.skip.filter(x => x !== d); store.put('events', ev, 0); scheduleRender(); });
+    } break;
+    case 'unskip': if (cur && cur.repeat) { cur.repeat.skip = cur.repeat.skip.filter(x => x !== a.dataset.d); store.put('events', cur, 0); renderSheet(); scheduleRender(); } break;
     case 'ev-allday': if (cur) { cur.start = null; cur.end = null; store.put('events', cur, 0); renderSheet(); scheduleRender(); } break;
     case 'sub-toggle': if (cur) { const s = cur.subtasks.find(x => x.id === a.dataset.sid); if (s) { s.done = !s.done; store.put('tasks', cur, 0); renderSheet(); scheduleRender(); } } break;
     case 'sub-del': if (cur) { cur.subtasks = cur.subtasks.filter(x => x.id !== a.dataset.sid); store.put('tasks', cur, 0); renderSheet(); scheduleRender(); } break;
@@ -1370,10 +1564,16 @@ function handleAction(a, e) {
       const kind = a.dataset.kind;
       armDelete(a, () => {
         const it = data[kind][id]; if (!it) return;
+        const unlinked = kind === 'events' ? tasks().filter(t => t.eventId === id) : [];
+        unlinked.forEach(t => { t.eventId = null; store.put('tasks', t, 0); });
         store.del(kind, id);
         if (kind === 'notes') { S.noteId = null; renderAll(); }
         else { S.open = null; closeSheet(true); }
-        toast(kind === 'notes' ? 'Заметка удалена' : kind === 'events' ? 'Событие удалено' : 'Задача удалена', () => { store.put(kind, it, 0); renderAll(); });
+        toast(kind === 'notes' ? 'Заметка удалена' : kind === 'events' ? 'Событие удалено, задачи к нему остались' : 'Задача удалена', () => {
+          store.put(kind, it, 0);
+          unlinked.forEach(t => { t.eventId = id; store.put('tasks', t, 0); });
+          renderAll();
+        });
       });
       break;
     }
@@ -1430,7 +1630,7 @@ function handleAction(a, e) {
   }
 }
 $('#scrim').addEventListener('click', () => { closeDrawer(); if (S.open) closeSheet(); });
-$('#fab').addEventListener('click', () => { if (S.view === 'notes') createNote({}); else createTask(contextDefaults()); });
+$('#fab').addEventListener('click', () => { if (S.view === 'notes') createNote({}); else if (S.view === 'schedule') createSeries(); else createTask(contextDefaults()); });
 $('#import-file').addEventListener('change', e => { const f = e.target.files[0]; if (f) importData(f); e.target.value = ''; });
 
 document.addEventListener('submit', e => { const f = e.target.closest('.quick'); if (f) { e.preventDefault(); addQuick(f); } });
@@ -1460,6 +1660,20 @@ document.addEventListener('input', e => {
 document.addEventListener('change', e => {
   const t = e.target;
   if (t.dataset.nfield && t.tagName === 'SELECT') { renderView(true); return; }
+  if (t.dataset.rep && S.open) {
+    const it = data[S.open.kind][S.open.id]; if (!it) return;
+    if (t.dataset.rep === 'freq') {
+      if (t.value === 'none') it.repeat = null;
+      else {
+        const r = it.repeat || {freq: t.value, days: [], until: null, skip: []};
+        r.freq = t.value;
+        if ((t.value === 'weekly' || t.value === 'biweekly') && !(r.days || []).length) r.days = [parse(it.date || today()).getDay()];
+        it.repeat = r;
+      }
+    } else if (it.repeat) it.repeat.until = t.value || null;
+    store.put(S.open.kind, it, 0); renderSheet(); scheduleRender();
+    return;
+  }
   if (t.dataset.field && S.open && (t.type === 'date' || t.type === 'time' || t.tagName === 'SELECT')) { applyField(t); renderSheet(); }
 });
 function applyField(t) {
@@ -1467,10 +1681,10 @@ function applyField(t) {
   const f = t.dataset.field; let v = t.value;
   if (f === 'tags') v = v.split(',').map(s => s.trim().replace(/^#/, '').toLowerCase()).filter(Boolean);
   else if (f === 'duration') v = +v;
-  else if (['date', 'time', 'deadline', 'projectId', 'start', 'end'].includes(f)) v = v || null;
+  else if (['date', 'time', 'deadline', 'projectId', 'start', 'end', 'eventId'].includes(f)) v = v || null;
   if (JSON.stringify(it[f]) === JSON.stringify(v)) return;
   it[f] = v;
-  if (kind === 'tasks' && f === 'date' && !v) it.time = null;
+  if (kind === 'tasks' && f === 'date' && !v) { it.time = null; it.repeat = null; }
   if (kind === 'events' && f === 'start' && v && it.end && toMin(it.end) <= toMin(v)) it.end = fromMin(Math.min(1439, toMin(v) + 60));
   if (kind === 'events' && f === 'date' && !v) it.date = today();
   if (t.tagName === 'TEXTAREA') autosize(t);
@@ -1479,6 +1693,7 @@ function applyField(t) {
 }
 document.addEventListener('keydown', e => {
   const t = e.target, typing = t.matches('input, textarea, select, [contenteditable]');
+  if (t.id === 'f-ev-task' && e.key === 'Enter') { e.preventDefault(); addEventTask(); return; }
   if (t.id === 'f-sub-new' && e.key === 'Enter') {
     e.preventDefault(); const v = t.value.trim(); const it = S.open && data.tasks[S.open.id];
     if (v && it) { it.subtasks.push({id: uid(), text: v, done: false}); store.put('tasks', it, 0); renderSheet(); scheduleRender(); $('#f-sub-new')?.focus(); }
