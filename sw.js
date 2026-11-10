@@ -1,6 +1,6 @@
 // Офлайн-режим: страница и библиотеки берутся из кэша, если нет сети.
 // После изменения файлов увеличьте номер версии, чтобы телефон подхватил обновление.
-const CACHE = 'poryadok-v3';
+const CACHE = 'poryadok-v4';
 const SHELL = [
   './', './index.html', './config.js', './manifest.webmanifest',
   './icon-192.png', './icon-512.png', './apple-touch-icon.png',

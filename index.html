@@ -485,6 +485,44 @@ svg.i{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-widt
 .fov .row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
 .fov.run .dial{animation:breathe 6s ease-in-out infinite}
 
+/* date & time picker, sheet action bar */
+.pick{display:flex;align-items:center;gap:8px;text-align:left;cursor:pointer;white-space:nowrap;overflow:hidden}
+.pick:hover{border-color:var(--faint)}
+.pick svg.i{width:15px;height:15px;color:var(--muted)}
+.pick span{overflow:hidden;text-overflow:ellipsis}
+.pick.empty span{color:var(--faint)}
+.pk-scrim{position:fixed;inset:0;z-index:64}
+.picker{position:fixed;z-index:65;width:308px;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:12px;display:flex;flex-direction:column;gap:10px;animation:menuin .16s var(--ease)}
+.picker #pk-body{display:flex;flex-direction:column;gap:8px}
+.pk-hint{font-size:12.5px;color:var(--muted);min-height:18px;margin-top:-4px}
+.pk-hint b{color:var(--accent);font-weight:600}
+.pk-head{display:flex;align-items:center;justify-content:space-between}
+.pk-head b{font-size:14.5px}
+.pk-head button{width:34px;height:34px;border-radius:8px;display:grid;place-items:center;color:var(--muted)}
+.pk-head button:hover{background:var(--hover);color:var(--fg)}
+.pk-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.pk-grid span{font-size:11px;font-weight:600;color:var(--muted);text-align:center;text-transform:uppercase;letter-spacing:.04em;padding:2px 0 4px}
+.pk-grid button{height:36px;border-radius:9px;font-size:13.5px;font-variant-numeric:tabular-nums}
+.pk-grid button:hover,.pk-chips button:hover{background:var(--hover)}
+.pk-grid .out{color:var(--faint)}
+.pk-grid .now{color:var(--accent);font-weight:700}
+.pk-chips{display:grid;grid-template-columns:repeat(6,1fr);gap:4px}
+.pk-chips button{height:34px;border-radius:8px;font-size:13px;font-family:var(--mono);border:1px solid var(--line)}
+.pk-grid button.sel,.pk-chips button.sel{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
+.pk-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:2px}
+.pk-val{font-size:24px;font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.sh-actions{display:flex;justify-content:space-between;gap:10px;padding:12px 22px;border-top:1px solid var(--line);background:var(--surface)}
+.sh-actions .btn{height:40px;padding:0 18px;font-size:14.5px}
+.sh-foot{border-top:0;padding-top:0}
+@media (max-width:860px){
+  .pk-scrim{background:var(--scrim)}
+  .picker{left:8px!important;right:8px;top:auto!important;bottom:calc(8px + env(safe-area-inset-bottom,0px));width:auto;animation:rise .25s var(--ease)}
+  .pk-grid button{height:42px;font-size:15px}
+  .pk-chips button{height:42px;font-size:14.5px}
+  .sh-actions{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+  .sh-actions .btn{height:44px;flex:1;justify-content:center}
+}
+
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 
@@ -1292,7 +1330,7 @@ function renderSidebar() {
 }
 function renderTabbar() {
   const tabs = [['today', 'star', 'Сегодня'], ['upcoming', 'up', 'Скоро'], ['calendar', 'cal', 'Календарь'], ['notes', 'note', 'Заметки']];
-  $('#tabbar').innerHTML = tabs.map(([v, i, l]) => `<button class="${S.view === v && !S.search ? 'on' : ''}" data-nav="${v}">${ic(i)}${l}</button>`).join('') + `<button data-action="drawer">${ic('menu')}Ещё</button>`;
+  $('#tabbar').innerHTML = `<button data-action="drawer">${ic('menu')}Ещё</button>` + tabs.map(([v, i, l]) => `<button class="${S.view === v && !S.search ? 'on' : ''}" data-nav="${v}">${ic(i)}${l}</button>`).join('');
   $('#fab').innerHTML = ic('plus');
   $('#fab').hidden = S.view === 'notes' && !!S.noteId;
 }
@@ -1349,6 +1387,7 @@ function openSheet(kind, id, isNew = false, occ = null) {
   if (isNew) setTimeout(() => { const t = $('#f-title'); t && t.focus(); }, 60);
 }
 function closeSheet(silent) {
+  closePicker();
   if (S.open) {
     const {kind, id, isNew} = S.open, it = data[kind][id];
     if (isNew && it && !it.title.trim() && !(it.notes || '').trim() && !(it.subtasks || []).length) store.del(kind, id);
@@ -1375,7 +1414,7 @@ function repeatFields(it, disabled) {
     <select class="inp" id="f-repeat" data-rep="freq" aria-label="Повтор" ${disabled ? 'disabled' : ''}>${Object.entries(REPEATS).map(([k, l]) => `<option value="${k}" ${k === f ? 'selected' : ''}>${l}</option>`).join('')}</select>
     ${r && (f === 'weekly' || f === 'biweekly') ? `<div class="days" role="group" aria-label="Дни недели">${WEEK.map(w => `<button class="${(r.days || []).includes(w) ? 'on' : ''}" data-action="rep-day" data-w="${w}" aria-pressed="${(r.days || []).includes(w)}">${WD[w]}</button>`).join('')}</div>` : ''}
     ${f === 'biweekly' ? `<div class="rep-hint">Недели считаются от даты начала. Для пар по числителю и знаменателю создайте две записи с началом на соседних неделях.</div>` : ''}
-    ${r ? `<label class="field" style="margin-top:6px"><span class="label">Повторять до</span><input class="inp" type="date" id="f-until" data-rep="until" value="${r.until || ''}"></label>` : ''}</div>`;
+    ${r ? `<label class="field" style="margin-top:6px"><span class="label">Повторять до</span>${pickBtn('date', 'f-until', 'data-rep="until"', r.until, 'Без окончания')}</label>` : ''}</div>`;
 }
 function eventTasksBlock(e) {
   const td = today(), occ = S.open && S.open.occ;
@@ -1388,7 +1427,7 @@ function eventTasksBlock(e) {
     ${open.length ? `<div class="list">${open.map(t => taskRow(t, {hideEvent: e.id, hideProject: e.projectId})).join('')}</div>` : ''}
     ${doneN ? `<div class="rep-hint">Выполнено: ${doneN}</div>` : ''}
     <input class="inp" id="f-ev-task" placeholder="Новая задача, например: реферат !1" autocomplete="off" enterkeyhint="done" aria-label="Новая задача к этому">
-    <label class="field"><span class="label">Дедлайн</span><input class="inp" type="date" id="f-ev-dl" value="${def || ''}"></label>
+    <label class="field"><span class="label">Дедлайн</span>${pickBtn('date', 'f-ev-dl', 'data-local="1"', def, 'Без дедлайна')}</label>
     <div class="qd">${opts.map(d => `<button data-action="ev-dl" data-v="${d}">${d === next ? 'К следующему' : 'К этому'}: ${esc(shortDate(d))}</button>`).join('')}<button data-action="ev-dl" data-v="">Без дедлайна</button></div>
     <button class="btn" style="align-self:flex-start" data-action="ev-add-task">${ic('plus')}Добавить задачу</button></div>`;
 }
@@ -1414,12 +1453,12 @@ function taskSheet(t) {
     ${t.done ? '' : `<div class="field"><span class="label">Фокус${focusTotal(t) ? ` · уже ${fmtMin(focusTotal(t))}` : ''}</span><div class="qd">${[15, 25, 50].map(m => `<button data-action="focus-start" data-id="${t.id}" data-m="${m}">${m} мин</button>`).join('')}</div></div>`}
     <div class="field"><span class="label">Важность</span><div class="prio">${[1,2,3].map(p => `<button class="${t.priority === p ? 'on' : ''}" style="--pc:var(--p${p})" data-action="set-prio" data-p="${p}"><i></i>${PRIO[p].label}</button>`).join('')}</div></div>
     <div class="field"><span class="label">Когда делать</span>
-      <div class="grid2"><input class="inp" type="date" id="f-date" data-field="date" value="${t.date || ''}" aria-label="Дата"><input class="inp" type="time" id="f-time" data-field="time" value="${t.time || ''}" aria-label="Время" ${t.date ? '' : 'disabled'}></div>
+      <div class="grid2">${pickBtn('date', 'f-date', 'data-field="date"', t.date, 'Без даты')}${pickBtn('time', 'f-time', 'data-field="time"', t.time, 'Без времени')}</div>
       <div class="qd"><button data-action="qdate" data-v="${td}">Сегодня</button><button data-action="qdate" data-v="${addDays(td, 1)}">Завтра</button><button data-action="qdate" data-v="${addDays(mondayOf(td), 7)}">След. неделя</button><button data-action="qdate" data-v="">Без даты</button></div></div>
     ${repeatFields(t, !t.date)}
     <div class="grid2">
       <label class="field"><span class="label">Длительность</span><select class="inp" id="f-dur" data-field="duration" ${t.time ? '' : 'disabled'}>${[15, 30, 45, 60, 90, 120, 180, 240].map(m => `<option value="${m}" ${t.duration === m ? 'selected' : ''}>${m < 60 ? m + ' мин' : (m / 60) + ' ч'}</option>`).join('')}</select></label>
-      <label class="field"><span class="label" style="color:var(--deadline)">Дедлайн</span><input class="inp" type="date" id="f-deadline" data-field="deadline" value="${t.deadline || ''}"></label></div>
+      <label class="field"><span class="label" style="color:var(--deadline)">Дедлайн</span>${pickBtn('date', 'f-deadline', 'data-field="deadline"', t.deadline, 'Нет дедлайна')}</label></div>
     ${linkable.length ? `<label class="field"><span class="label">Из расписания</span><select class="inp" id="f-event" data-field="eventId"><option value="">Не привязана</option>${linkable.map(e => `<option value="${e.id}" ${e.id === t.eventId ? 'selected' : ''}>${esc(e.title || 'Без названия')}${e.repeat ? ' (' + esc(repeatLabel(e)) + ')' : ''}</option>`).join('')}</select></label>` : ''}
     ${nextEv ? `<div class="qd" style="margin-top:-8px"><button data-action="task-dl" data-v="${nextEv}">Дедлайн к следующему занятию: ${esc(shortDate(nextEv))}</button></div>` : ''}
     <div class="field"><span class="label">Подзадачи${t.subtasks.length ? ` · ${t.subtasks.filter(s => s.done).length}/${t.subtasks.length}` : ''}</span>
@@ -1431,9 +1470,8 @@ function taskSheet(t) {
     <div class="field"><span class="label">Заметки к задаче</span><div class="linked">
       ${linked.map(n => `<button class="ln" data-action="open-note" data-id="${n.id}">${ic('note')}${esc(n.title || 'Без названия')}</button>`).join('')}
       <button class="btn" style="align-self:flex-start" data-action="note-for-task" data-id="${t.id}">${ic('plus')}Заметка к задаче</button></div></div>
-    <div class="sh-foot"><span>Создано ${esc(relDay(ymd(new Date(t.createdAt))).toLowerCase())}${t.done && t.doneAt ? ' · выполнено ' + esc(relDay(ymd(new Date(t.doneAt))).toLowerCase()) : ''}</span>
-      <button class="btn danger" data-action="delete" data-kind="tasks" data-id="${t.id}">Удалить</button></div>
-  </div>`;
+    <div class="sh-foot"><span>Создано ${esc(relDay(ymd(new Date(t.createdAt))).toLowerCase())}${t.done && t.doneAt ? ' · выполнено ' + esc(relDay(ymd(new Date(t.doneAt))).toLowerCase()) : ''}</span></div>
+  </div>${sheetActions('tasks', t.id)}`;
 }
 function eventSheet(e) {
   return `<div class="sh-head"><span style="color:var(--accent);margin-top:5px;display:grid">${ic('ev')}</span>
@@ -1441,16 +1479,15 @@ function eventSheet(e) {
     <button class="x-btn" data-action="close-sheet" aria-label="Закрыть">${ic('x')}</button></div>
   <div class="sh-body">
     ${occBlock(e)}
-    <label class="field"><span class="label">${e.repeat ? 'Начало повтора' : 'Дата'}</span><input class="inp" type="date" id="f-date" data-field="date" value="${e.date || ''}"></label>
-    <div class="grid2"><label class="field"><span class="label">Начало</span><input class="inp" type="time" id="f-start" data-field="start" value="${e.start || ''}"></label>
-      <label class="field"><span class="label">Конец</span><input class="inp" type="time" id="f-end" data-field="end" value="${e.end || ''}"></label></div>
+    <label class="field"><span class="label">${e.repeat ? 'Начало повтора' : 'Дата'}</span>${pickBtn('date', 'f-date', 'data-field="date"', e.date, 'Выберите дату')}</label>
+    <div class="grid2"><label class="field"><span class="label">Начало</span>${pickBtn('time', 'f-start', 'data-field="start"', e.start, 'Весь день')}</label>
+      <label class="field"><span class="label">Конец</span>${pickBtn('time', 'f-end', 'data-field="end"', e.end, 'Не задан')}</label></div>
     <div class="qd"><button data-action="ev-allday">Весь день</button></div>
     ${repeatFields(e, false)}
     ${eventTasksBlock(e)}
     <label class="field"><span class="label">Проект</span><select class="inp" id="f-project" data-field="projectId">${projectOptions(e.projectId)}</select></label>
     <label class="field"><span class="label">Описание</span><textarea id="f-notes" class="inp" style="height:auto;min-height:90px;padding:8px 10px;resize:vertical" data-field="notes" placeholder="Место, ссылка, детали">${esc(e.notes)}</textarea></label>
-    <div class="sh-foot"><span></span><button class="btn danger" data-action="delete" data-kind="events" data-id="${e.id}">${e.repeat ? 'Удалить весь повтор' : 'Удалить'}</button></div>
-  </div>`;
+  </div>${sheetActions('events', e.id, e.repeat)}`;
 }
 
 /* ---------- actions ---------- */
@@ -1517,7 +1554,7 @@ function addEventTask() {
   const text = inp.value.trim(); if (!text) { inp.focus(); return; }
   const r = parseQuick(text);
   if (!r.title) { toast('Добавьте название задачи'); return; }
-  const deadline = r.deadline || $('#f-ev-dl').value || null;
+  const deadline = r.deadline || $('#f-ev-dl').dataset.value || null;
   const t = newTask({title: r.title, priority: r.priority || 2, tags: r.tags, date: r.date || (r.time ? deadline || today() : null), time: r.time || null, deadline, eventId: e.id, projectId: e.projectId || null});
   store.put('tasks', t, 0);
   renderSheet(); scheduleRender();
@@ -1623,6 +1660,8 @@ function importData(file) {
 document.addEventListener('click', e => {
   const t = e.target;
   if (Date.now() - suppressClick < 450) { e.preventDefault(); return; }
+  const pkb = t.closest('[data-pick]');
+  if (pkb) { e.preventDefault(); openPicker(pkb); return; }
   if (!t.closest('#menu')) closeMenu();
   const nav = t.closest('[data-nav]');
   if (nav) { go(nav.dataset.nav, {id: nav.dataset.id}); return; }
@@ -1663,7 +1702,14 @@ function handleAction(a, e) {
     case 'set-prio': if (cur) { cur.priority = +a.dataset.p; store.put('tasks', cur, 0); renderSheet(); scheduleRender(); } break;
     case 'qdate': if (cur) { cur.date = a.dataset.v || null; if (!cur.date) { cur.time = null; cur.repeat = null; } store.put('tasks', cur, 0); renderSheet(); scheduleRender(); } break;
     case 'task-dl': if (cur) { cur.deadline = a.dataset.v; store.put('tasks', cur, 0); renderSheet(); scheduleRender(); } break;
-    case 'ev-dl': { const dl = $('#f-ev-dl'); if (dl) dl.value = a.dataset.v; $('#f-ev-task')?.focus(); break; }
+    case 'ev-dl': { const dl = $('#f-ev-dl'); if (dl) setLocalPick(dl, a.dataset.v); $('#f-ev-task')?.focus(); break; }
+    case 'discard': if (S.open) { store.del(S.open.kind, S.open.id); S.open = null; closeSheet(true); } break;
+    case 'sheet-add': if (cur) {
+      if (!cur.title.trim()) { toast('Введите название'); $('#f-title')?.focus(); break; }
+      const k = S.open.kind; S.open.isNew = false;
+      if (k === 'tasks') flashTask(cur.id);
+      closeSheet(); toast(k === 'tasks' ? 'Задача добавлена' : 'Событие добавлено');
+    } break;
     case 'ev-add-task': addEventTask(); break;
     case 'new-sched': createSeries(a.dataset.wd == null ? null : +a.dataset.wd); break;
     case 'rep-day': if (cur && cur.repeat) {
@@ -1834,6 +1880,7 @@ function applyField(t) {
 document.addEventListener('keydown', e => {
   const t = e.target, typing = !!t.matches?.('input, textarea, select, [contenteditable]');
   if (t.id === 'f-ev-task' && e.key === 'Enter') { e.preventDefault(); addEventTask(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && S.open && S.open.isNew && !pk) { e.preventDefault(); $('[data-action="sheet-add"]')?.click(); return; }
   if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'л')) { e.preventDefault(); if ($('#pal')) closePal(); else openPal(); return; }
   if (t.id === 'f-sub-new' && e.key === 'Enter') {
     e.preventDefault(); const v = t.value.trim(); const it = S.open && data.tasks[S.open.id];
@@ -1844,6 +1891,7 @@ document.addEventListener('keydown', e => {
   if (t.id === 'f-title' && e.key === 'Enter') { e.preventDefault(); $('#f-notes')?.focus(); return; }
   if (t.id === 'proj-name' && e.key === 'Enter') { e.preventDefault(); t.blur(); return; }
   if (e.key === 'Escape') {
+    if (pk) { closePicker(); return; }
     if ($('#pal')) { closePal(); return; }
     if ($('#menu')) { closeMenu(); return; }
     if (focus && focusOpen && !S.open) { focusOpen = false; renderFocus(); return; }
@@ -2157,6 +2205,119 @@ const endSwipe = () => {
 };
 document.addEventListener('touchend', endSwipe);
 document.addEventListener('touchcancel', endSwipe);
+
+/* ---------- date & time picker (replaces native inputs) ---------- */
+let pk = null;
+const dateLabel = v => { const n = diffDays(today(), v); return `${n === 0 ? 'Сегодня' : n === 1 ? 'Завтра' : n === -1 ? 'Вчера' : WD[parse(v).getDay()]}, ${shortDate(v)}`; };
+function pickBtn(kind, id, attr, value, ph) {
+  return `<button type="button" class="inp pick ${value ? '' : 'empty'}" id="${id}" data-pick="${kind}" ${attr} data-value="${value || ''}" data-ph="${esc(ph)}">${ic(kind === 'date' ? 'cal' : 'clock')}<span>${esc(value ? (kind === 'date' ? dateLabel(value) : value) : ph)}</span></button>`;
+}
+function setLocalPick(btn, v) { btn.dataset.value = v || ''; btn.classList.toggle('empty', !v); btn.querySelector('span').textContent = v ? dateLabel(v) : btn.dataset.ph; }
+function sheetActions(kind, id, repeat) {
+  return `<div class="sh-actions">${S.open && S.open.isNew
+    ? `<button class="btn danger" data-action="discard">Удалить</button><button class="btn primary" data-action="sheet-add">${ic('plus')}Добавить</button>`
+    : `<button class="btn danger" data-action="delete" data-kind="${kind}" data-id="${id}">${repeat ? 'Удалить весь повтор' : 'Удалить'}</button><button class="btn primary" data-action="close-sheet">Готово</button>`}</div>`;
+}
+function looseDate(s) {
+  s = s.trim().toLowerCase(); if (!s) return null;
+  const d = parseDateToken(s.replace(/[\/\-\s]+/g, '.').replace(/^\.|\.$/g, '')) || parseDateToken(s.split(/\s+/)[0]);
+  if (d) return d;
+  if (/^\d{1,2}$/.test(s) && +s >= 1 && +s <= 31) { const t = new Date(), c = new Date(t.getFullYear(), t.getMonth() + (+s < t.getDate() ? 1 : 0), +s); return c.getDate() === +s ? ymd(c) : null; }
+  return null;
+}
+function looseTime(s) {
+  const m = /^(\d{1,2})[:.\s]?(\d{2})?$/.exec(s.trim());
+  return m && +m[1] < 24 && (!m[2] || +m[2] < 60) ? `${pad(+m[1])}:${m[2] || '00'}` : null;
+}
+function openPicker(btn) {
+  if (pk && pk.id === btn.id) { closePicker(); return; }
+  closePicker(); closeMenu();
+  const kind = btn.dataset.pick, v = btn.dataset.value || '';
+  pk = {kind, id: btn.id, value: v, typed: null, cursor: kind === 'date' && v ? v : today(), hTouched: false,
+    h: kind === 'time' && v ? +v.slice(0, 2) : null, m: kind === 'time' && v ? +v.slice(3) : null,
+    canClear: !(btn.dataset.field === 'date' && S.open && S.open.kind === 'events')};
+  const scrim = document.createElement('div'); scrim.className = 'pk-scrim'; scrim.id = 'pk-scrim';
+  const el = document.createElement('div'); el.className = 'picker'; el.id = 'picker'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', kind === 'date' ? 'Выбор даты' : 'Выбор времени');
+  document.body.append(scrim, el);
+  scrim.addEventListener('click', closePicker);
+  el.addEventListener('click', onPickerClick);
+  el.addEventListener('input', onPickerInput);
+  el.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' || e.target.id !== 'pk-q') return;
+    e.preventDefault();
+    if (pk.typed) commitPick(pk.typed); else if (!e.target.value.trim()) closePicker();
+  });
+  const td = today(), now = new Date(), soon = Math.ceil((now.getHours() * 60 + now.getMinutes() + 60) / 5) * 5 % 1440;
+  const chips = kind === 'date'
+    ? [['Сегодня', td], ['Завтра', addDays(td, 1)], ['Через неделю', addDays(td, 7)], ['Через месяц', addDays(td, 30)]]
+    : [['Через час', fromMin(soon)], ['09:00', '09:00'], ['12:00', '12:00'], ['15:00', '15:00'], ['18:00', '18:00'], ['21:00', '21:00']];
+  el.innerHTML = `<input class="inp" id="pk-q" placeholder="${kind === 'date' ? 'Например: завтра, пт, 15.12' : 'Например: 14:30 или 930'}" ${kind === 'time' ? 'inputmode="numeric"' : ''} autocomplete="off" aria-label="${kind === 'date' ? 'Дата текстом' : 'Время цифрами'}">
+    <div class="pk-hint" id="pk-hint"></div>
+    <div class="qd">${chips.map(([l, d]) => `<button data-pk-set="${d}">${l}</button>`).join('')}${pk.canClear ? `<button data-pk-set="">Убрать</button>` : ''}</div>
+    <div id="pk-body"></div>`;
+  renderPkBody();
+  if (!narrow()) {
+    const r = btn.getBoundingClientRect(), h = el.offsetHeight, w = el.offsetWidth;
+    let top = r.bottom + 6; if (top + h > innerHeight - 8) top = Math.max(8, r.top - h - 6);
+    el.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + 'px'; el.style.top = top + 'px';
+  }
+  if (!TOUCH) $('#pk-q').focus();
+}
+function renderPkBody() {
+  const body = $('#pk-body'); if (!body || !pk) return;
+  const td = today(), sel = pk.typed || pk.value;
+  if (pk.kind === 'date') {
+    const cur = parse(pk.cursor), first = new Date(cur.getFullYear(), cur.getMonth(), 1);
+    const start = ymd(new Date(cur.getFullYear(), cur.getMonth(), 1 - (first.getDay() + 6) % 7));
+    body.innerHTML = `<div class="pk-head"><button data-pk="prev" aria-label="Предыдущий месяц">${ic('left')}</button><b>${MONTHS[cur.getMonth()]} ${cur.getFullYear()}</b><button data-pk="next" aria-label="Следующий месяц">${ic('right')}</button></div>
+      <div class="pk-grid">${['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'].map(w => `<span>${w}</span>`).join('')}${Array.from({length: 42}, (_, i) => {
+        const d = addDays(start, i), dd = parse(d);
+        return `<button class="${dd.getMonth() !== cur.getMonth() ? 'out' : ''} ${d === td ? 'now' : ''} ${d === sel ? 'sel' : ''}" data-pk-set="${d}">${dd.getDate()}</button>`;
+      }).join('')}</div>`;
+  } else {
+    body.innerHTML = `<div class="label">Часы</div><div class="pk-chips">${Array.from({length: 24}, (_, i) => `<button class="${pk.h === i ? 'sel' : ''}" data-pk-h="${i}">${pad(i)}</button>`).join('')}</div>
+      <div class="label">Минуты</div><div class="pk-chips">${Array.from({length: 12}, (_, i) => `<button class="${pk.m === i * 5 ? 'sel' : ''}" data-pk-m="${i * 5}">${pad(i * 5)}</button>`).join('')}</div>
+      <div class="pk-foot"><span class="pk-val">${sel || '--:--'}</span><button class="btn primary" data-pk="ok">Готово</button></div>`;
+  }
+}
+function onPickerInput(e) {
+  if (e.target.id !== 'pk-q' || !pk) return;
+  const s = e.target.value, v = pk.kind === 'date' ? looseDate(s) : looseTime(s), hint = $('#pk-hint');
+  pk.typed = v;
+  if (v && pk.kind === 'date') pk.cursor = v;
+  if (v && pk.kind === 'time') { pk.h = +v.slice(0, 2); pk.m = +v.slice(3); }
+  hint.innerHTML = v ? `<b>${esc(pk.kind === 'date' ? dateLabel(v) : v)}</b> — нажмите Enter` : s.trim() ? (pk.kind === 'date' ? 'Не получилось распознать дату' : 'Введите время, например 14:30') : '';
+  renderPkBody();
+}
+function onPickerClick(e) {
+  const b = e.target.closest('button'); if (!b || !pk) return;
+  if ('pkSet' in b.dataset) { commitPick(b.dataset.pkSet); return; }
+  if (b.dataset.pk === 'ok') { if (pk.typed) commitPick(pk.typed); else closePicker(); return; }
+  if (b.dataset.pk === 'prev' || b.dataset.pk === 'next') { const c = parse(pk.cursor); pk.cursor = ymd(new Date(c.getFullYear(), c.getMonth() + (b.dataset.pk === 'next' ? 1 : -1), 1)); renderPkBody(); return; }
+  if ('pkH' in b.dataset || 'pkM' in b.dataset) {
+    const minute = 'pkM' in b.dataset;
+    if (minute) pk.m = +b.dataset.pkM; else { pk.h = +b.dataset.pkH; pk.hTouched = true; }
+    if (pk.h == null) pk.h = new Date().getHours();
+    if (pk.m == null) pk.m = 0;
+    pk.typed = null; pk.value = `${pad(pk.h)}:${pad(pk.m)}`;
+    if (minute && pk.hTouched) { commitPick(pk.value); return; }
+    applyPicked(pk.value); renderPkBody();
+  }
+}
+function applyPicked(v) {
+  const btn = pk && document.getElementById(pk.id); if (!btn) return;
+  if (btn.dataset.local) { setLocalPick(btn, v); return; }
+  const it = S.open && data[S.open.kind][S.open.id]; if (!it) return;
+  if (btn.dataset.rep) { if (it.repeat) { it.repeat.until = v || null; store.put(S.open.kind, it, 0); } }
+  else {
+    const f = btn.dataset.field;
+    if (S.open.kind === 'tasks' && f === 'time' && v && !it.date) it.date = today();
+    applyField({dataset: {field: f}, value: v, tagName: 'INPUT'});
+  }
+  renderSheet(); scheduleRender();
+}
+function commitPick(v) { applyPicked(v); closePicker(); }
+function closePicker() { $('#picker')?.remove(); $('#pk-scrim')?.remove(); pk = null; }
 
 /* keep "today" honest across midnight */
 let lastDay = today();
